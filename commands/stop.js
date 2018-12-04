@@ -1,6 +1,6 @@
 'use strict';
 
-const prequest = require('request-promise-native');
+const runContainer = require('../app/run-container');
 
 module.exports.command = 'stop <name>';
 
@@ -19,22 +19,7 @@ module.exports.builder = yargs => {
 module.exports.handler = async args => {
 
     let container = args.name;
-    let endpoint = `http://127.0.0.1:3346/containers/started/${container}`;
 
-    try {
-
-        await prequest.delete(endpoint);
-        console.log(`container "${container}" stoped.`);
-
-    } catch (error) { 
-
-        if (error.statusCode === 404)
-            console.error(`container "${container}" not found.`);
-
-        else throw error;
-
-        process.exit(1);
-
-    }
+    await runContainer.stopContainer({ name: container });
 
 }

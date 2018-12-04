@@ -1,9 +1,12 @@
 'use strict';
 
+const net = require('net');
 const uuid4 = require('uuid/v4');
 const path = require('path');
-const prequest = require('request-promise-native');
-const TTYClient = require('../tty-client');
+const config = require('../app/config');
+const runContainer = require('../app/run-container');
+const ManifestFactory = require('../app/manifest-factory');
+const zfs = require('../app/zfs');
 
 module.exports.desc = 'command for launch the container';
 
@@ -61,7 +64,7 @@ module.exports.builder = yargs => {
             default: null,
             describe: 'override entry command.',
         })
-        .demandOption(['from']);
+        .demandOption(['name']);
 }
 
 module.exports.handler = async args => {
@@ -72,7 +75,16 @@ module.exports.handler = async args => {
     let { tty, rm, nat } = args;
     let { mount, volume, env, rules } = args;
 
-    tty = tty ? uuid4() : null;
+    let dataset = path.join(config.containersLocation, name);
+    let datasetPath = zfs.get(dataset, 'mountpoint');
+    let rootFSPath = path.join(datasetPath, 'rootfs');
+    let manifestFile = path.join(datasetPath, 'manifest.json');
+    let manifest = ManifestFactory.fromJsonFile(manifestFile);
+
+    console.log(manifest);
+
+    entry = entry ? entry : manifest.entry;
+    command = command ? command : manifest.command;
 
     env = env.reduce((acc, item) => {
         let [key, value] = item.split('=');
@@ -80,21 +92,25 @@ module.exports.handler = async args => {
         return acc;
     } , {});
 
+    env = Object.assign({}, manifest.env, env);
+
     rules = rules.reduce((acc, item) => {
         let [key, value] = item.split('=');
         acc[key] = value;
         return acc;
     } , {});
 
+    rules = Object.assign({}, manifest.rules, rules);
+
     let mounts = mount.map(
         item => {
 
-            let [ src, dest ] = item.split(':');
-            if (!dest && src) dest = src;
+            let [ src, dst ] = item.split(':');
+            if (!dst && src) dst = src;
 
             src = path.resolve(src);
-            dest = path.resolve(dest);
-            return {src, dest};
+            dst = path.resolve(dst);
+            return {src, dst};
 
         }
     );
@@ -109,61 +125,53 @@ module.exports.handler = async args => {
     );
 
     let body = {
-        from,
         name,
-        rm,
-        tty,
-        nat,
-        entry,
+        path: datasetPath,
+        rootfs: rootFSPath,
+        workdir: manifest.workdir,
         command,
-        rules,
+        entry,
         env,
         mounts,
-        volumes,
-    }
+        interface: "epair0b",
+        rules,
+    };
 
-    console.log(body)
+    console.log(body);
 
-    let endpoint = 'http://127.0.0.1:3346/containers/started';
-    let response = await prequest.post(endpoint, {
-        body,
-        json: true,
-    });
+    let result = await runContainer.runContainer(body);
+
+    console.log(result);
 
     if (tty) {
 
+        let sockets = await runContainer.getTty({ name });
+        console.log(sockets);
+
+        let {input, output} = sockets;
+
+        let socket_out = net.connect(output);
+        let socket_in = net.connect(input);
+
         process.stdin.setRawMode(true);
-        tty = await TTYClient.factory(tty);
 
-        tty.on('data', async chunk => await process.stdout.write(chunk));
-        process.stdin.on('data', async chunk => await tty.write(chunk));
-        process.stdout.on('resize', async _ => {
-
-            let event = {
-                name: 'resize',
-                data: {
-                    columns: process.stdout.columns,
-                    rows: process.stdout.rows,
-                }
-            }
-
-            await tty.sendEvent(event);
-
-        });
-
-        tty.on('server-close-connection', async _ => {
-
-            await tty.destructor();
+        socket_out.on('end', _ => {
+            console.log("output end");
             process.exit();
+        })
 
-        });
+        socket_out.on('end', _ => {
+            console.log("input end");
+            process.exit();
+        })
 
-        tty.on('exit', async event => {
+        socket_out.on('data', data => {
+            process.stdout.write(data);
+        })
 
-            await tty.destructor();
-            process.exit(event.data.code);
-
-        });
+        process.stdin.on('data', data => {
+            socket_in.write(data);
+        })
 
     }
 

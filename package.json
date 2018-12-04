@@ -4,7 +4,9 @@
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
+    "case": "^1.6.0",
     "ioredis": "^4.0.0",
+    "js-yaml": "^3.12.0",
     "request": "^2.88.0",
     "request-promise-native": "^1.0.5",
     "uuid": "^3.3.2",
