@@ -1,12 +1,15 @@
 'use strict';
 
 const net = require('net');
+const fs = require('fs');
 const uuid4 = require('uuid/v4');
 const path = require('path');
+const { ensureDir, copy, pathExists } = require('fs-extra');
 const config = require('../app/config');
 const runContainer = require('../app/run-container');
 const ManifestFactory = require('../app/manifest-factory');
 const zfs = require('../app/zfs');
+const foldersSync = require('../app/folders-sync');
 
 module.exports.desc = 'command for launch the container';
 
@@ -103,17 +106,29 @@ module.exports.handler = async args => {
     rules = Object.assign({}, manifest.rules, rules);
 
     let mounts = mount.map(
-        item => {
+        async item => {
 
             let [ src, dst ] = item.split(':');
             if (!dst && src) dst = src;
 
             src = path.resolve(src);
             dst = path.resolve(dst);
+            let mountPath = path.join(rootFSPath, dst);
+
+            await ensureDir(mountPath);
+
+            if (!(await pathExists(src))) {
+
+                await foldersSync(path.join(mountPath, '/'), path.join(src, '/'));
+
+            }
+
             return {src, dst};
 
         }
     );
+
+    mounts = await Promise.all(mounts);
 
     let volumes = volume.map(
         item => {
@@ -124,6 +139,38 @@ module.exports.handler = async args => {
         }
     );
 
+    volumes = manifest.volumes.concat(volumes);
+    volumes = volumes.map(async item => {
+
+        let {name, to} = item;
+
+        to = path.resolve(to);
+        let mountPath = path.join(rootFSPath, to);
+
+        await ensureDir(mountPath);
+
+        let volumeDataset = path.join(config.volumesLocation, name);
+
+        if (!zfs.has(volumeDataset)) {
+
+            zfs.ensureDataset(volumeDataset);
+            let src = zfs.get(volumeDataset, 'mountpoint');
+            await foldersSync(path.join(mountPath, '/'), path.join(src, '/'));
+
+        }
+
+        let from = zfs.get(volumeDataset, 'mountpoint');
+        let {uid, gid} = fs.statSync(mountPath);
+
+        fs.chownSync(from, uid, gid);
+
+        return { src: from, dst: mountPath };
+
+    });
+
+    volumes = await Promise.all(volumes);
+    mounts = volumes.concat(mounts);
+
     let body = {
         name,
         path: datasetPath,
@@ -133,11 +180,13 @@ module.exports.handler = async args => {
         entry,
         env,
         mounts,
-        interface: "epair0b",
+        // interface: "epair0b",
         rules,
     };
 
     console.log(body);
+
+    // process.exit()
 
     let result = await runContainer.runContainer(body);
 
