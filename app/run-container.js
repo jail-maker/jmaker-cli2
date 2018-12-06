@@ -54,6 +54,12 @@ class RunContainer {
 
     }
 
+    waitContainer(body = {}) {
+
+        return this.remoteCall("wait_container", body);
+
+    }
+
 }
 
 module.exports = new RunContainer;

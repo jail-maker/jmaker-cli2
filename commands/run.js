@@ -186,7 +186,14 @@ module.exports.handler = async args => {
 
     console.log(body);
 
-    // process.exit()
+    (async _ => {
+
+        let result = await runContainer.waitContainer({ name });
+        console.log(result);
+        console.log('exited');
+        process.exit();
+
+    })();
 
     let result = await runContainer.runContainer(body);
 
@@ -206,12 +213,12 @@ module.exports.handler = async args => {
 
         socket_out.on('end', _ => {
             console.log("output end");
-            process.exit();
+            socket_in.end();
         })
 
-        socket_out.on('end', _ => {
+        socket_in.on('end', _ => {
             console.log("input end");
-            process.exit();
+            socket_out.end();
         })
 
         socket_out.on('data', data => {
@@ -221,6 +228,7 @@ module.exports.handler = async args => {
         process.stdin.on('data', data => {
             socket_in.write(data);
         })
+
 
     }
 
