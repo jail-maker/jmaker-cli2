@@ -23,6 +23,10 @@ class RunContainer {
 
             });
 
+            socket.on('close', _ => {
+                console.log('close')
+            })
+
             socket.end(JSON.stringify({
                 jsonrpc: "2.0",
                 method,
