@@ -23,8 +23,8 @@ class RunContainer {
 
             });
 
-            socket.on('close', _ => {
-                console.log('close')
+            socket.on('close', error => {
+                reject("connection closed");
             })
 
             socket.end(JSON.stringify({

@@ -188,10 +188,13 @@ module.exports.handler = async args => {
 
     (async _ => {
 
-        let result = await runContainer.waitContainer({ name });
-        console.log(result);
-        console.log('exited');
-        process.exit();
+        try {
+            let result = await runContainer.waitContainer({ name });
+        } catch (error) {
+            console.log(error);
+        } finally {
+            process.exit();
+        }
 
     })();
 
