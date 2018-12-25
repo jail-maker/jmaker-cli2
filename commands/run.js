@@ -67,6 +67,11 @@ module.exports.builder = yargs => {
             default: null,
             describe: 'override entry command.',
         })
+        .option('iface', {
+            type: 'string',
+            default: null,
+            describe: 'add network interface to container.',
+        })
         .demandOption(['name']);
 }
 
@@ -74,7 +79,7 @@ module.exports.handler = async args => {
 
     let command = args._.slice(1).join(' ');
 
-    let { from, name, entry } = args;
+    let { from, name, entry, iface } = args;
     let { tty, rm, nat } = args;
     let { mount, volume, env, rules } = args;
 
@@ -180,7 +185,7 @@ module.exports.handler = async args => {
         entry,
         env,
         mounts,
-        // interface: "epair0b",
+        interface: iface,
         rules,
     };
 
